@@ -1,24 +1,15 @@
 from flask import Flask, request, jsonify
 import pandas as pd
 import xgboost as xgb
-import pickle
+import joblib
 
 app = Flask(__name__)
 
-# Load model and label encoder
-model = xgb.Booster()
-model.load_model("health_condition_model.json")
-label_encoder = pickle.load(open("label_encoder.pkl", "rb"))
+# Load all models
+models = joblib.load("condition_models.pkl")
 
-# Expected features (must match training data)
-EXPECTED_FEATURES = [
-    "heart_rate",
-    "step_count",
-    "distance",
-    "energy_burned",
-    "resting_hr",
-    "walking_hr_avg"
-]
+# Valid conditions
+VALID_CONDITIONS = ['dehydration', 'overfatigue', 'heat_stroke_risk']
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -26,39 +17,42 @@ def predict():
         data = request.json
         
         # Validate input
-        if not data:
-            return jsonify({"error": "No input data provided"}), 400
+        if not data or 'health_data' not in data or 'condition' not in data:
+            return jsonify({"error": "Missing health_data or condition parameter"}), 400
         
-        # Create feature vector
-        features = {
-            "heart_rate": data.get("heartRate", 0),
-            "step_count": data.get("stepCount", 0),
-            "distance": data.get("distanceWalkingRunning", 0),
-            "energy_burned": data.get("activeEnergyBurned", 0),
-            "resting_hr": data.get("restingHeartRate", 0),
-            "walking_hr_avg": data.get("walkingHeartRateAverage", 0)
-        }
+        condition = data['condition'].lower()
+        if condition not in VALID_CONDITIONS:
+            return jsonify({
+                "error": f"Invalid condition. Must be one of: {VALID_CONDITIONS}",
+                "received": condition
+            }), 400
         
-        # Convert to DataFrame
-        df = pd.DataFrame([features])
+        # Prepare features
+        health_data = data['health_data']
+        features = pd.DataFrame([{
+            'heart_rate': health_data.get('heartRate', 0),
+            'step_count': health_data.get('stepCount', 0),
+            'distance': health_data.get('distanceWalkingRunning', 0),
+            'energy_burned': health_data.get('activeEnergyBurned', 0),
+            'resting_hr': health_data.get('restingHeartRate', 0),
+            'walking_hr_avg': health_data.get('walkingHeartRateAverage', 0)
+        }])
         
         # Predict
-        dmatrix = xgb.DMatrix(df)
-        prediction = model.predict(dmatrix)
-        condition = label_encoder.inverse_transform([int(prediction[0])])[0]
+        model = models[condition]
+        proba = float(model.predict(xgb.DMatrix(features))[0])
+        prediction = "abnormal" if proba >= 0.5 else "normal"
         
         return jsonify({
-            "status": "success",
-            "prediction": condition,
-            "confidence": float(max(model.predict(dmatrix, output_margin=True)[0]))
+            "condition": condition,
+            "prediction": prediction,
+            "probability": proba,
+            "threshold": 0.5,
+            "status": "success"
         })
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    return jsonify({"status": "healthy"}), 200
-
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000, debug=True)
+    app.run(host='0.0.0.0', port=8000)
