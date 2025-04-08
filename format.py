@@ -1,39 +1,30 @@
 import json
 import pandas as pd
+from sklearn.preprocessing import LabelEncoder
 
-# Load raw data from JSON file
-with open("data.json", "r", encoding="utf-8") as f:
-    data = json.load(f)
+# Load and format raw health data with condition labels
+def prepare_training_data(input_json, output_csv):
+    with open(input_json, "r") as f:
+        raw_data = json.load(f)
+    
+    processed_data = []
+    
+    for entry in raw_data:
+        # Each entry should contain health metrics AND a 'condition' field
+        processed_entry = {
+            "heart_rate": entry.get("heartRate", 0),
+            "step_count": entry.get("stepCount", 0),
+            "distance": entry.get("distanceWalkingRunning", 0),
+            "energy_burned": entry.get("activeEnergyBurned", 0),
+            "resting_hr": entry.get("restingHeartRate", 0),
+            "walking_hr_avg": entry.get("walkingHeartRateAverage", 0),
+            "condition": entry.get("condition")  # This should be 'dehydration', 'overfatigue', or 'heat_stroke_risk'
+        }
+        processed_data.append(processed_entry)
+    
+    df = pd.DataFrame(processed_data)
+    df.to_csv(output_csv, index=False)
+    print(f"Data saved to {output_csv}")
 
-# Initialize a list to store parsed entries
-parsed_entries = []
-
-# Iterate over the dictionary values
-for key, values in data.items():
-    # Check if the value is a list, and handle accordingly
-    if isinstance(values, list) and len(values) > 0:
-        # Get the last entry in the list, assuming it's an array of dicts
-        for entry in values:
-            try:
-                parsed_entry = {
-                    "heartRate": entry.get("value", 0) if key == "heartRate" else None,
-                    "stepCount": entry.get("value", 0) if key == "stepCount" else None,
-                    "distanceWalkingRunning": entry.get("value", 0) if key == "distanceWalkingRunning" else None,
-                    "activeEnergyBurned": entry.get("value", 0) if key == "activeEnergyBurned" else None,
-                    "restingHeartRate": entry.get("value", 0) if key == "restingHeartRate" else None,
-                    "walkingHeartRateAverage": entry.get("value", 0) if key == "walkingHeartRateAverage" else None,
-                    "type": key  # Store the key type if needed
-                }
-                parsed_entries.append(parsed_entry)
-            except Exception as e:
-                print(f"Error parsing entry: {e}")
-
-# Convert parsed entries into a DataFrame
-df = pd.DataFrame(parsed_entries)
-
-# Save the DataFrame to CSV
-if not df.empty:
-    df.to_csv("formatted_health_data.csv", index=False)
-    print("Saved formatted data to formatted_health_data.csv")
-else:
-    print("No valid health data to save.")
+if __name__ == "__main__":
+    prepare_training_data("raw_health_data.json", "training_data.csv")

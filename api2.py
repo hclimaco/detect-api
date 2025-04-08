@@ -1,73 +1,64 @@
+from flask import Flask, request, jsonify
 import pandas as pd
 import xgboost as xgb
-from flask import Flask, request, jsonify
-from sklearn.preprocessing import LabelEncoder
+import pickle
 
-# Load the trained XGBoost model
-model = xgb.Booster()
-model.load_model("xgboost_model.json")
-
-# Initialize Flask app
 app = Flask(__name__)
 
-# Assuming we have a label encoder for 'type'
-label_encoder = LabelEncoder()
-label_encoder.fit(["dehydration", "overfatigue", "heat stroke risk"])
+# Load model and label encoder
+model = xgb.Booster()
+model.load_model("health_condition_model.json")
+label_encoder = pickle.load(open("label_encoder.pkl", "rb"))
 
-# API route to handle prediction requests
+# Expected features (must match training data)
+EXPECTED_FEATURES = [
+    "heart_rate",
+    "step_count",
+    "distance",
+    "energy_burned",
+    "resting_hr",
+    "walking_hr_avg"
+]
+
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
-        # Get input data from the request (JSON)
-        input_data = request.get_json()
-
-        # Extract health data and the type
-        health_data = input_data.get("health_data", {})
-        target_type = input_data.get("type", "").lower()
-
-        if target_type not in label_encoder.classes_:
-            return jsonify({"error": f"Invalid type. Must be one of {label_encoder.classes_}"}), 400
-
-        # Convert the health data into a pandas DataFrame
-        df = pd.DataFrame([health_data])
-
-        # Handle missing values by filling with 0 or more sophisticated methods
-        df.fillna(0, inplace=True)
-
-        # If you have a specific feature extraction method, use it here
-        # For this example, we'll assume the columns are already correct for prediction
-        X = df  # You can further process this if needed
-
-        # Create a DMatrix (XGBoost internal format) for prediction
-        dtest = xgb.DMatrix(X)
-
-        # Get the prediction (model output)
-        prediction = model.predict(dtest)
-
-        # Map the prediction to the target type using the label encoder
-        predicted_class = label_encoder.inverse_transform([int(prediction.argmax())])[0]
-
-        # Return the prediction as a JSON response
-        response = {
-            "prediction": predicted_class,
-            "message": "Prediction successful"
+        data = request.json
+        
+        # Validate input
+        if not data:
+            return jsonify({"error": "No input data provided"}), 400
+        
+        # Create feature vector
+        features = {
+            "heart_rate": data.get("heartRate", 0),
+            "step_count": data.get("stepCount", 0),
+            "distance": data.get("distanceWalkingRunning", 0),
+            "energy_burned": data.get("activeEnergyBurned", 0),
+            "resting_hr": data.get("restingHeartRate", 0),
+            "walking_hr_avg": data.get("walkingHeartRateAverage", 0)
         }
-        return jsonify(response), 200
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
-
-@app.route('/health', methods=['GET'])
-def health():
-    try:
-        result = {
-            "running": True,
-        }
-        return jsonify(result), 200
+        
+        # Convert to DataFrame
+        df = pd.DataFrame([features])
+        
+        # Predict
+        dmatrix = xgb.DMatrix(df)
+        prediction = model.predict(dmatrix)
+        condition = label_encoder.inverse_transform([int(prediction[0])])[0]
+        
+        return jsonify({
+            "status": "success",
+            "prediction": condition,
+            "confidence": float(max(model.predict(dmatrix, output_margin=True)[0]))
+        })
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Run the app
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({"status": "healthy"}), 200
+
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    app.run(host='0.0.0.0', port=8000, debug=True)
