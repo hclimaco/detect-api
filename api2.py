@@ -82,17 +82,17 @@ def predict():
         elif condition == 'dehydration':
             # Map API input to dehydration model features
             features = pd.DataFrame([{
-                'Age': health_data.get('age', 30),
-                'Gender': 1 if health_data.get('gender', '').lower() == 'male' else 0,
-                'Weight (kg)': health_data.get('weight', 0),
-                'Height (m)': health_data.get('height', 1.7),
-                'Resting_BPM': health_data.get('resting_bpm', 70),
-                'Session_Duration (hours)': health_data.get('session_duration', 0),
-                'Calories_Burned': health_data.get('calories_burned', 0),
-                'Fat_Percentage': health_data.get('fat_percentage', 0),
-                'Water_Intake (liters)': health_data.get('water_intake', 0),
-                'BMI': health_data.get('bmi', 0)
-            }])
+            'Age': health_data.get('age', 30),
+            'Gender': 1 if health_data.get('gender', '').lower() == 'male' else 0,
+            'Weight (kg)': health_data.get('weight', 0),
+            'Height (m)': health_data.get('height', 1.7),
+            'Resting_BPM': health_data.get('resting_bpm', 70),
+            'Session_Duration (hours)': health_data.get('session_duration', 0),
+            'Calories_Burned': health_data.get('calories_burned', 0),
+            'Fat_Percentage': health_data.get('fat_percentage', 0),
+            'Water_Intake (liters)': health_data.get('water_intake', 0),
+            'BMI': health_data.get('bmi', 0)
+        }])
             
             # Predict
             proba = float(dehydration_model.predict(xgb.DMatrix(features))[0])
