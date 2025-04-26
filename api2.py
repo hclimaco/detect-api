@@ -95,7 +95,7 @@ def predict():
             }])
             
             # Predict
-            proba = float(dehydration_model.predict(xgb.DMatrix(features))[0]
+            proba = float(dehydration_model.predict(xgb.DMatrix(features)))[0]
             prediction = "high_risk" if proba >= 0.5 else "low_risk"
         
         # Uniform response for all conditions
