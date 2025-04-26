@@ -8,13 +8,15 @@ app = Flask(__name__)
 # Load all models
 heat_stroke_model = joblib.load("heat_stroke_model.pkl")
 stress_model = joblib.load("stress_model.pkl")
+dehydration_model = joblib.load("dehydration_model.pkl")
 
 # Load feature names
 heat_stroke_features = joblib.load("heat_stroke_features.pkl")
 stress_features = joblib.load("stress_features.pkl")
+dehydration_features = joblib.load("dehydration_features.pkl")
 
 # Valid conditions
-VALID_CONDITIONS = ['heat_stroke', 'stress']
+VALID_CONDITIONS = ['heat_stroke', 'stress', 'dehydration']
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -63,14 +65,6 @@ def predict():
             proba = float(heat_stroke_model.predict(xgb.DMatrix(features))[0])
             prediction = "high_risk" if proba >= 0.5 else "low_risk"
             
-            return jsonify({
-                "condition": condition,
-                "prediction": prediction,
-                "probability": proba,
-                "threshold": 0.5,
-                "status": "success"
-            })
-            
         elif condition == 'stress':
             # Map API input to stress model features
             features = pd.DataFrame([{
@@ -79,28 +73,39 @@ def predict():
                 'Step count': health_data.get('step_count', 0)
             }])
             
-            # Predict (multi-class)
+            # Predict (convert multi-class to binary risk assessment)
             proba = stress_model.predict(xgb.DMatrix(features))[0]
-            prediction = int(proba.argmax())
-            confidence = float(proba.max())
+            # Use the high_stress probability as our risk indicator
+            proba = float(proba[2])  # high_stress probability
+            prediction = "high_risk" if proba >= 0.5 else "low_risk"
             
-            stress_levels = {
-                0: "low_stress",
-                1: "medium_stress",
-                2: "high_stress"
-            }
+        elif condition == 'dehydration':
+            # Map API input to dehydration model features
+            features = pd.DataFrame([{
+                'Age': health_data.get('age', 30),
+                'Gender': 1 if health_data.get('gender', '').lower() == 'male' else 0,
+                'Weight (kg)': health_data.get('weight', 0),
+                'Height (m)': health_data.get('height', 1.7),
+                'Resting_BPM': health_data.get('resting_bpm', 70),
+                'Session_Duration (hours)': health_data.get('session_duration', 0),
+                'Calories_Burned': health_data.get('calories_burned', 0),
+                'Fat_Percentage': health_data.get('fat_percentage', 0),
+                'Water_Intake (liters)': health_data.get('water_intake', 0),
+                'BMI': health_data.get('bmi', 0)
+            }])
             
-            return jsonify({
-                "condition": condition,
-                "prediction": stress_levels[prediction],
-                "confidence": confidence,
-                "probabilities": {
-                    "low_stress": float(proba[0]),
-                    "medium_stress": float(proba[1]),
-                    "high_stress": float(proba[2])
-                },
-                "status": "success"
-            })
+            # Predict
+            proba = float(dehydration_model.predict(xgb.DMatrix(features))[0]
+            prediction = "high_risk" if proba >= 0.5 else "low_risk"
+        
+        # Uniform response for all conditions
+        return jsonify({
+            "condition": condition,
+            "prediction": prediction,
+            "probability": proba,
+            "threshold": 0.5,
+            "status": "success"
+        })
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500
